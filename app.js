@@ -50,6 +50,87 @@ async function fetchHeatmap(base, seriesIdOrList, status) {
   return res.json();
 }
 
+// --- Robust stats helpers ---
+function percentile(sortedNumericAsc, p /* 0..1 */) {
+  const arr = sortedNumericAsc;
+  if (!arr.length) return NaN;
+  const idx = (arr.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return arr[lo];
+  const t = idx - lo;
+  return arr[lo] * (1 - t) + arr[hi] * t;
+}
+
+function getTotalsArray(matrix) {
+  // Collect all finite totalPoints from matrix
+  const vals = [];
+  for (const r of (matrix || [])) {
+    const v = Number(r.totalPoints);
+    if (Number.isFinite(v)) vals.push(v);
+  }
+  return vals;
+}
+
+function buildWinsorizer(vals, lowerP = 0.05, upperP = 0.95) {
+  const sorted = vals.slice().sort((a, b) => a - b);
+  const lo = percentile(sorted, lowerP);
+  const hi = percentile(sorted, upperP);
+  const loClamped = Number.isFinite(lo) ? lo : 0;
+  const hiClamped = Number.isFinite(hi) ? hi : 1;
+  return {
+    domain: [loClamped, hiClamped],
+    map: (x) => {
+      const v = Math.max(loClamped, Math.min(hiClamped, Number(x) || 0));
+      const t = (v - loClamped) / Math.max(1e-9, hiClamped - loClamped);
+      return Math.max(0, Math.min(1, t));
+    }
+  };
+}
+
+function buildQuantileMapper(vals, steps = 9) {
+  // returns a mapper that puts x into [0..1] by quantile bin
+  const sorted = vals.slice().sort((a, b) => a - b);
+  if (!sorted.length) {
+    return { thresholds: [], map: () => 0, domain: [0, 1] };
+  }
+  const thresholds = [];
+  for (let i = 1; i < steps; i++) {
+    thresholds.push(percentile(sorted, i / steps));
+  }
+  const min = sorted[0], max = sorted[sorted.length - 1];
+  return {
+    thresholds,
+    domain: [min, max],
+    map: (x) => {
+      const v = Number(x) || 0;
+      let idx = 0;
+      while (idx < thresholds.length && v > thresholds[idx]) idx++;
+      return idx / (steps - 1); // 0..1 across buckets
+    }
+  };
+}
+
+function buildLogMapper(vals) {
+  if (!vals.length) return { domain: [0, 1], map: () => 0 };
+  const min = Math.max(1e-6, Math.min(...vals));
+  const max = Math.max(min * 10, Math.max(...vals)); // ensure span
+  const logMin = Math.log(min), logMax = Math.log(max);
+  return {
+    domain: [min, max],
+    map: (x) => {
+      const v = Math.max(min, Math.min(max, Number(x) || 0));
+      const t = (Math.log(v) - logMin) / Math.max(1e-9, (logMax - logMin));
+      return Math.max(0, Math.min(1, t));
+    }
+  };
+}
+
+function colorFromUnit(unit /* 0..1 */) {
+  const hue = unit * 120; // red->green
+  const bg = `hsl(${hue}, 75%, 45%)`;
+  return { bg, fg: pickTextColorForHsl(bg) };
+}
+
 /**
  * Render the heatmap table.
  * - Cell text: totalPoints (sum of 5/3/2/1 league points for that Player×Machine)
