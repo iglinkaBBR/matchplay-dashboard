@@ -274,10 +274,11 @@ function renderHeatmap(data) {
   corner.textContent = '';
   corner.className  = 'sticky-left';
   trNames.appendChild(corner);
-
+  
   machines.forEach(m => {
     const th = document.createElement('th');
-    th.innerHTML = `<div class="colhdr">${m.machineName || m.machineId}</div>`;
+    th.classList.add('col');
+    th.textContent = m.machineName || m.machineId;  // normal, no rotation
     trNames.appendChild(th);
   });
   thead.appendChild(trNames);
