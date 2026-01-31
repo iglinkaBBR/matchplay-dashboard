@@ -6,3 +6,49 @@ button{padding:6px 12px}
 table{border-collapse:collapse;margin-top:12px}
 th,td{border:1px solid #2a3454;padding:6px;text-align:center}
 th{background:#111a33}
+/* === Header alignment & no-rotate === */
+#heatmap thead th, 
+#heatmap thead th * {
+  transform: none !important;     /* kill any rotation (e.g., from .colhdr) */
+  font-style: normal !important;  /* remove italics */
+  white-space: nowrap;            /* keep on one line; we'll clip */
+}
+
+/* === Uniform column width ===
+   Adjust --col-w to taste (e.g., 120px). This applies to ALL machine columns
+   (header + median row + body cells). The first sticky-left column (players)
+   can be wider independently.
+*/
+:root { --col-w: 96px; }
+#heatmap th.col, 
+#heatmap td.col {
+  width: var(--col-w);
+  max-width: var(--col-w);
+  min-width: var(--col-w);
+}
+
+/* Player name column can be wider */
+:root { --left-col-w: 180px; }
+#heatmap th.sticky-left,
+#heatmap td.sticky-left {
+  width: var(--left-col-w);
+  max-width: var(--left-col-w);
+  min-width: var(--left-col-w);
+}
+
+/* Truncate overflowing header text cleanly */
+#heatmap thead th.col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* If you still keep a wrapper element (e.g., .colhdr) it should not rotate */
+.colhdr {
+  display: block;
+  transform: none !important;
+  font-style: normal !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  height: auto;                   /* no forced height from previous style */
+}
