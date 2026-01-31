@@ -200,12 +200,159 @@ function colorFromUnit(unit /* 0..1 */) {
  * - Cell color: avgPoints (0..5) → red→green
  */
 
+// ---------- Smart matrix reordering (barycentric with NW bias) ----------
+function buildWeightMatrix(data, weightMode /* 'total' | 'avg' */) {
+  const players = data.players || [];
+  const machines = data.machines || [];
+  const pIndex = new Map(players.map((p, i) => [p.playerId, i]));
+  const mIndex = new Map(machines.map((m, i) => [m.machineId, i]));
+  const R = players.length, C = machines.length;
+
+  const W = Array.from({ length: R }, () => Array(C).fill(0));
+
+  // Fill with totals or averages
+  for (const r of (data.matrix || [])) {
+    const i = pIndex.get(r.playerId);
+    const j = mIndex.get(r.machineId);
+    if (i == null || j == null) continue;
+    const v = weightMode === 'avg' ? (Number(r.avgPoints) || 0) : (Number(r.totalPoints) || 0);
+    W[i][j] = Math.max(0, v);
+  }
+
+  // Normalize per column (reduces single-machine outliers)
+  for (let j = 0; j < C; j++) {
+    let min = Infinity, max = -Infinity;
+    for (let i = 0; i < R; i++) { const v = W[i][j]; if (Number.isFinite(v)) { if (v < min) min = v; if (v > max) max = v; } }
+    const span = (max > min) ? (max - min) : 1;
+    for (let i = 0; i < R; i++) W[i][j] = span ? (W[i][j] - min) / span : 0; // 0..1
+  }
+
+  return W;
+}
+
+function barycenterRow(rowW, colPosMap) {
+  let num = 0, den = 0;
+  for (let j = 0; j < rowW.length; j++) {
+    const w = rowW[j];
+    if (w > 0) { num += (colPosMap.get(j) ?? 0) * w; den += w; }
+  }
+  return den > 0 ? num / den : Number.POSITIVE_INFINITY;
+}
+
+function barycenterCol(W, colIndex, rowPosMap) {
+  let num = 0, den = 0;
+  for (let i = 0; i < W.length; i++) {
+    const w = W[i][colIndex];
+    if (w > 0) { num += (rowPosMap.get(i) ?? 0) * w; den += w; }
+  }
+  return den > 0 ? num / den : Number.POSITIVE_INFINITY;
+}
+
+// Returns reordered arrays { players, machines } without mutating data
+function smartOrderTopLeft(data, weightMode /* 'total' | 'avg' */ = 'total', iterations = 6) {
+  const players = (data.players || []).slice();
+  const machines = (data.machines || []).slice();
+  const R = players.length, C = machines.length;
+  if (!R || !C) return { players, machines };
+
+  // Build weight matrix
+  const W = buildWeightMatrix(data, weightMode);
+
+  // Initial orders: players by total weight desc; machines by usage desc
+  const rowTotals = Array.from({ length: R }, (_, i) => W[i].reduce((a, b) => a + b, 0));
+  const colTotals = Array.from({ length: C }, (_, j) => W.reduce((s, row) => s + row[j], 0));
+
+  let rowOrder = Array.from({ length: R }, (_, i) => i).sort((a, b) => colCompare(rowTotals[b], rowTotals[a], a, b));
+  let colOrder = Array.from({ length: C }, (_, j) => j).sort((a, b) => colCompare(colTotals[b], colTotals[a], a, b));
+
+  function colCompare(primaryB, primaryA, idxA, idxB) {
+    // stable-ish numeric desc; tiebreak by index to keep deterministic
+    if (primaryB !== primaryA) return primaryB - primaryA;
+    return idxA - idxB;
+  }
+
+  // Barycentric iterations
+  for (let t = 0; t < iterations; t++) {
+    // Row pass
+    const colPos = new Map(colOrder.map((j, pos) => [j, pos]));
+    rowOrder.sort((ia, ib) => {
+      const ba = barycenterRow(W[ia], colPos);
+      const bb = barycenterRow(W[ib], colPos);
+      return ba - bb;
+    });
+
+    // Column pass
+    const rowPos = new Map(rowOrder.map((i, pos) => [i, pos]));
+    colOrder.sort((ja, jb) => {
+      const ba = barycenterCol(W, ja, rowPos);
+      const bb = barycenterCol(W, jb, rowPos);
+      return ba - bb;
+    });
+  }
+
+  // NW bias: combine barycenter position (normalized) with strength (row/col totals)
+  const rowPosFinal = new Map(rowOrder.map((i, pos) => [i, pos]));
+  const colPosFinal = new Map(colOrder.map((j, pos) => [j, pos]));
+
+  const maxRowPos = Math.max(1, R - 1), maxColPos = Math.max(1, C - 1);
+  const rowStrength = rowOrder.map(i => rowTotals[i]); // larger = stronger
+  const colStrength = colOrder.map(j => colTotals[j]);
+
+  const minRS = Math.min(...rowStrength), maxRS = Math.max(...rowStrength);
+  const minCS = Math.min(...colStrength), maxCS = Math.max(...colStrength);
+  const norm = (v, a, b) => (b > a ? (v - a) / (b - a) : 0);
+
+  const alpha = 0.6; // weight for barycenter position vs strength (tune 0..1)
+
+  rowOrder.sort((iA, iB) => {
+    const posA = (rowPosFinal.get(iA) || 0) / maxRowPos;     // 0..1 (top = 0)
+    const posB = (rowPosFinal.get(iB) || 0) / maxRowPos;
+    const sA = 1 - norm(rowTotals[iA], minRS, maxRS);        // 0..1 (stronger -> closer to 0)
+    const sB = 1 - norm(rowTotals[iB], minRS, maxRS);
+    const scoreA = alpha * posA + (1 - alpha) * sA;
+    const scoreB = alpha * posB + (1 - alpha) * sB;
+    return scoreA - scoreB; // lower score to the top
+  });
+
+  colOrder.sort((jA, jB) => {
+    const posA = (colPosFinal.get(jA) || 0) / maxColPos;     // 0..1 (left = 0)
+    const posB = (colPosFinal.get(jB) || 0) / maxColPos;
+    const sA = 1 - norm(colTotals[jA], minCS, maxCS);        // 0..1 (more-used -> closer to 0)
+    const sB = 1 - norm(colTotals[jB], minCS, maxCS);
+    const scoreA = alpha * posA + (1 - alpha) * sA;
+    const scoreB = alpha * posB + (1 - alpha) * sB;
+    return scoreA - scoreB; // lower score to the left
+  });
+
+  // Materialize reordered objects
+  const playersOut  = rowOrder.map(i => players[i]);
+  const machinesOut = colOrder.map(j => machines[j]);
+  return { players: playersOut, machines: machinesOut };
+}
+
 function renderHeatmap(data) {
   setStickyStyles();
 
   const tbl = document.getElementById('heatmap');
   tbl.innerHTML = '';
-
+  
+  // Read UI
+  const layoutMode = document.getElementById('layoutMode')?.value || 'manual';
+  const scaleMode  = document.getElementById('scale')?.value || 'total-winz';
+  // Use the same “story” as the color scale: if 'avg' is selected, steer by avg too
+  const weightMode = (scaleMode === 'avg') ? 'avg' : 'total';
+  
+  let players, machines;
+  
+  if (layoutMode === 'smart-nw') {
+    ({ players, machines } = smartOrderTopLeft(data, weightMode, 6));
+  } else {
+    // Your existing manual reorder (whatever you implemented earlier):
+    const rowMode = document.getElementById('rowOrder')?.value || 'player-avg-desc';
+    const colMode = document.getElementById('colOrder')?.value || 'machine-usage-desc';
+    ({ players, machines } = reorderForDisplay(data, rowMode, colMode));
+  }
+  
   const machines = data.machines || [];
   const players  = data.players  || [];
   const matrix   = data.matrix   || [];
@@ -402,8 +549,21 @@ async function load() {
 
 // Wire up events
 window.addEventListener('DOMContentLoaded', () => {
+  // Load button
   const btn = document.getElementById('load');
   if (btn) btn.addEventListener('click', load);
+
+  // Re-render the heatmap when UI controls change (no refetch)
+  ['layoutMode', 'rowOrder', 'colOrder', 'scale', 'showValues'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (window.__HEATMAP_DATA__) {
+        renderHeatmap(window.__HEATMAP_DATA__);
+      }
+    });
+  });
+
   // Auto-load once if fields are prefilled
   load().catch(console.warn);
 });
