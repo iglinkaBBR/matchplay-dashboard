@@ -96,7 +96,7 @@ function renderHeatmap(data) {
   medianLabel.textContent = 'Median';
   medianLabel.style.textAlign = 'right';
   medianLabel.style.paddingRight = '8px';
-  trMedians.appendChild(medianLabel);
+  // trMedians.appendChild(medianLabel);
 
   (data.machines || []).forEach(m => {
     const th = document.createElement('th');
