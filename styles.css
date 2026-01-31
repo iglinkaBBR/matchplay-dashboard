@@ -19,7 +19,7 @@ th{background:#111a33}
    (header + median row + body cells). The first sticky-left column (players)
    can be wider independently.
 */
-:root { --col-w: 25px; }
+:root { --col-w: 15px; }
 #heatmap th.col, 
 #heatmap td.col {
   width: var(--col-w);
