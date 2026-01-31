@@ -134,7 +134,7 @@ function getTotalsArray(matrix) {
   return vals;
 }
 
-function buildWinsorizer(vals, lowerP = 0.01, upperP = 0.99) {
+function buildWinsorizer(vals, lowerP = 0.1, upperP = 0.9) {
   const sorted = vals.slice().sort((a, b) => a - b);
   const lo = percentile(sorted, lowerP);
   const hi = percentile(sorted, upperP);
