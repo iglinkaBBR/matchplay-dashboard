@@ -7,14 +7,21 @@
 
 /** ===== Helpers injected by UI updates ===== **/
 
-function window.pickTextColorForHsl(bgHsl) {
+
+// app.js (top of file)
+window.setStickyStyles = function () { /* ... */ };
+window.pickTextColorForHsl = function (bgHsl) { /* ... */ };
+window.renderLegend = function (mode, domain) { /* ... */ };
+
+
+function pickTextColorForHsl(bgHsl) {
   // Parse "hsl(H, S%, L%)", choose white text for darker backgrounds.
   const m = /hsl\(\s*([0-9.]+),\s*([0-9.]+)%\s*,\s*([0-9.]+)%\s*\)/i.exec(bgHsl);
   const L = m ? parseFloat(m[3]) : 50;
   return L < 55 ? '#f8fafc' : '#0b1220';
 }
 
-function window.setStickyStyles() {
+function setStickyStyles() {
   // Injects a small, scoped CSS block once.
   const styleId = 'heatmap-sticky-style';
   if (document.getElementById(styleId)) return;
@@ -38,7 +45,7 @@ function window.setStickyStyles() {
   document.head.appendChild(style);
 }
 
-function window.renderLegend(mode, domain) {
+function renderLegend(mode, domain) {
   const el = document.getElementById('legend');
   if (!el) return;
   const [a, b] = domain || [0, 1];
