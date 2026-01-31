@@ -71,7 +71,7 @@ function renderHeatmap(data) {
   }
 
   // Optional: if you want to color by TOTAL POINTS, compute the max once:
-  // const maxTotal = (data.matrix || []).reduce((mx, r) => Math.max(mx, r.totalPoints || 0), 0);
+  const maxTotal = (data.matrix || []).reduce((mx, r) => Math.max(mx, r.totalPoints || 0), 0);
 
   const thead = document.createElement('thead');
   const tbody = document.createElement('tbody');
