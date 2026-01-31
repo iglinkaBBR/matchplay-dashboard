@@ -90,6 +90,29 @@ function renderHeatmap(data) {
 
   thead.appendChild(trNames);
 
+  // ---- Header Row 2: machine median scores (if available)
+  const trMedians = document.createElement('tr');
+  const medianLabel = document.createElement('th');
+  medianLabel.textContent = 'Median';
+  medianLabel.style.textAlign = 'right';
+  medianLabel.style.paddingRight = '8px';
+  trMedians.appendChild(medianLabel);
+
+  (data.machines || []).forEach(m => {
+    const th = document.createElement('th');
+    if (m.medianScore != null) {
+      const rounded = Math.round(Number(m.medianScore));
+      th.textContent = Number.isFinite(rounded) ? rounded.toLocaleString() : '—';
+      th.title = `Median raw score on ${m.machineName || m.machineId}`;
+    } else {
+      th.textContent = '—';
+    }
+    trMedians.appendChild(th);
+  });
+
+  thead.appendChild(trMedians);
+  tbl.appendChild(thead);
+  
   // ---- Body: rows by player, columns by machine
   (data.players || []).forEach(p => {
     const tr = document.createElement('tr');
