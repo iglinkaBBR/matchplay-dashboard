@@ -4,6 +4,62 @@
  * Map avg points (0..5) to a red→green HSL background.
  * Returns { bg, fg } (background and an optional foreground color).
  */
+
+/** ===== Helpers injected by UI updates ===== **/
+
+function pickTextColorForHsl(bgHsl) {
+  // Parse "hsl(H, S%, L%)", choose white text for darker backgrounds.
+  const m = /hsl\(\s*([0-9.]+),\s*([0-9.]+)%\s*,\s*([0-9.]+)%\s*\)/i.exec(bgHsl);
+  const L = m ? parseFloat(m[3]) : 50;
+  return L < 55 ? '#f8fafc' : '#0b1220';
+}
+
+function setStickyStyles() {
+  // Injects a small, scoped CSS block once.
+  const styleId = 'heatmap-sticky-style';
+  if (document.getElementById(styleId)) return;
+  const css = `
+    #heatmap { border-collapse: separate; border-spacing: 1px; table-layout: fixed; width: max-content; margin-top: 8px; }
+    #heatmap th, #heatmap td { padding: 4px 6px; font-size: 12px; text-align: center; white-space: nowrap; }
+    #heatmap thead th { position: sticky; top: 0; z-index: 2; background: #0b1220; color: #e5e7eb; }
+    #heatmap th.sticky-left { position: sticky; left: 0; z-index: 3; background: #0b1220; color: #e5e7eb; text-align: left; }
+    #heatmap td.sticky-left { position: sticky; left: 0; z-index: 2; background: #0b1220; color: #e5e7eb; text-align: left; }
+    #heatmap td { border-radius: 3px; }
+    #heatmap tr:hover td { outline: 1px solid rgba(255,255,255,0.15); }
+    #heatmap td.dim { opacity: 0.25; }
+    .colhdr { display: inline-block; white-space: nowrap; transform: rotate(-35deg); transform-origin: left bottom; height: 48px; }
+    #legend { margin-top: 6px; }
+    #legend .legend { display:flex; align-items:center; gap:8px; color:#cbd5e1; font-size:12px; }
+    #legend .swatch { height: 10px; width: 18px; border-radius: 2px; }
+  `;
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+function renderLegend(mode, domain) {
+  const el = document.getElementById('legend');
+  if (!el) return;
+  const [a, b] = domain || [0, 1];
+  const label = mode === 'avg' ? 'Avg points (0–5)'
+    : mode === 'total' || mode?.startsWith('total-') ? `Total points` 
+    : 'Per‑machine normalized (0–1)';
+  const colors = Array.from({ length: 10 }, (_, i) => {
+    const hue = (i / 9) * 120; // red->green
+    return `hsl(${hue}, 75%, 45%)`;
+  });
+  el.innerHTML = `
+    <div class="legend">
+      <span>${label}</span>
+      <span>${typeof a === 'number' ? Math.round(a) : a}</span>
+      ${colors.map(c => `<div class="swatch" style="background:${c}"></div>`).join('')}
+      <span>${typeof b === 'number' ? Math.round(b) : b}</span>
+    </div>
+  `;
+}
+
+
 function colorForAvgPoints(ap) {
   const val = ap == null ? 0 : Math.max(0, Math.min(5, Number(ap)));
   const hue = (val / 5) * 120; // 0=red, 120=green
