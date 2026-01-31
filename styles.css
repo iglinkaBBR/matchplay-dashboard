@@ -19,7 +19,7 @@ th{background:#111a33}
    (header + median row + body cells). The first sticky-left column (players)
    can be wider independently.
 */
-:root { --col-w: 50px; }
+:root { --col-w: 25px; }
 #heatmap th.col, 
 #heatmap td.col {
   width: var(--col-w);
@@ -50,11 +50,11 @@ th{background:#111a33}
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  height: 300px;                   /* no forced height from previous style */
+  height: auto;                   /* no forced height from previous style */
 }
 /* Make heatmap cell numbers bold and black */
 #heatmap td {
   font-weight: 900;      /* bold */
-  font-size: 75px;      /* increase size (try 14–16px) */
+  font-size: 40px;      /* increase size (try 14–16px) */
   color: #000000;        /* black text */
 }
