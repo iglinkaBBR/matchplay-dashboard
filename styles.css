@@ -55,6 +55,6 @@ th{background:#111a33}
 /* Make heatmap cell numbers bold and black */
 #heatmap td {
   font-weight: 900;      /* bold */
-  font-size: 40px;      /* increase size (try 14–16px) */
+  font-size: 80px;      /* increase size (try 14–16px) */
   color: #000000;        /* black text */
 }
