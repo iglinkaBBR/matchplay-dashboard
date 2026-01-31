@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MatchPlay Series Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>MatchPlay Series Dashboard</h1>
+    <div class="controls">
+      <label>API Base
+        <input id="apiBase" value="https://matchplay-6lfz.onrender.com" />
+      </label>
+      <label>Series ID
+        <input id="seriesId" value="4960" />
+      </label>
+      <button id="load">Load</button>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>Win Rate by Machine</h2>
+      <table id="heatmap"></table>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
