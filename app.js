@@ -138,9 +138,9 @@ function renderHeatmap(data) {
         txt = String(pts);
 
         // Color = AVG POINTS (0..5)
-        const { bg: cBg, fg: cFg } = colorForAvgPoints(cell.avgPoints);
+        // const { bg: cBg, fg: cFg } = colorForAvgPoints(cell.avgPoints);
         // If you want color by total instead, use:
-        // const { bg: cBg, fg: cFg } = colorForTotalPoints(cell.totalPoints, maxTotal);
+        const { bg: cBg, fg: cFg } = colorForTotalPoints(cell.totalPoints, maxTotal);
         bg = cBg; fg = cFg;
 
         title += `: ${pts} total points across ${cell.games} game(s)`;
