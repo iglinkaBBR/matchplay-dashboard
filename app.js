@@ -136,113 +136,181 @@ function colorFromUnit(unit /* 0..1 */) {
  * - Cell text: totalPoints (sum of 5/3/2/1 league points for that Player×Machine)
  * - Cell color: avgPoints (0..5) → red→green
  */
+
 function renderHeatmap(data) {
+  setStickyStyles();
+
   const tbl = document.getElementById('heatmap');
   tbl.innerHTML = '';
 
-  // Build a fast lookup: M[playerId].get(machineId) -> { wins, games, totalPoints, avgPoints }
+  const machines = data.machines || [];
+  const players  = data.players  || [];
+  const matrix   = data.matrix   || [];
+
+  // Lookup: playerId -> (machineId -> cell)
   const M = new Map();
-  for (const row of (data.matrix || [])) {
+  for (const row of matrix) {
     let perPlayer = M.get(row.playerId);
-    if (!perPlayer) {
-      perPlayer = new Map();
-      M.set(row.playerId, perPlayer);
-    }
+    if (!perPlayer) { perPlayer = new Map(); M.set(row.playerId, perPlayer); }
     perPlayer.set(row.machineId, row);
   }
 
-  // Optional: if you want to color by TOTAL POINTS, compute the max once:
-  const maxTotal = (data.matrix || []).reduce((mx, r) => Math.max(mx, r.totalPoints || 0), 0);
+  // Precompute: global totals array, global maxTotal, per-column min/max
+  const totals = getTotalsArray(matrix);
+  let maxTotal = 0;
+  const colStats = new Map(); // machineId -> {min,max}
+  for (const m of machines) colStats.set(m.machineId, { min: Infinity, max: -Infinity });
 
+  for (const r of matrix) {
+    const t = Number(r.totalPoints) || 0;
+    maxTotal = Math.max(maxTotal, t);
+    const st = colStats.get(r.machineId);
+    if (st) { st.min = Math.min(st.min, t); st.max = Math.max(st.max, t); }
+  }
+  for (const [k, st] of colStats) {
+    if (!Number.isFinite(st.min)) st.min = 0;
+    if (!Number.isFinite(st.max)) st.max = 1;
+  }
+
+  // Read UI
+  const mode = document.getElementById('scale')?.value || 'total-winz';
+  const showValues = document.getElementById('showValues')?.checked !== false;
+
+  // Build color mappers
+  let mapper, legendDomain;
+  if (mode === 'avg') {
+    mapper = { map: (ap) => Math.max(0, Math.min(1, (Number(ap) || 0) / 5)) };
+    legendDomain = [0, 5];
+  } else if (mode === 'colNorm') {
+    mapper = { // per-column min-max; pass machineId to map
+      mapCol: (machineId, t) => {
+        const st = colStats.get(machineId) || { min: 0, max: 1 };
+        const span = Math.max(1e-9, st.max - st.min);
+        return Math.max(0, Math.min(1, ((Number(t) || 0) - st.min) / span));
+      }
+    };
+    legendDomain = [0, 1];
+  } else if (mode === 'total-quant') {
+    const q = buildQuantileMapper(totals, 10);
+    mapper = q;
+    legendDomain = q.domain;
+  } else if (mode === 'total-log') {
+    const lg = buildLogMapper(totals);
+    mapper = lg;
+    legendDomain = lg.domain;
+  } else { // 'total-winz' default
+    const wz = buildWinsorizer(totals, 0.05, 0.95);
+    mapper = wz;
+    legendDomain = wz.domain;
+  }
+
+  // THEAD: names row
   const thead = document.createElement('thead');
-  const tbody = document.createElement('tbody');
-
-  // ---- Header Row 1: machine names
   const trNames = document.createElement('tr');
   const corner = document.createElement('th');
-  corner.textContent = ''; // top-left corner
+  corner.textContent = '';
+  corner.className  = 'sticky-left';
   trNames.appendChild(corner);
 
-  (data.machines || []).forEach(m => {
+  machines.forEach(m => {
     const th = document.createElement('th');
-    th.textContent = m.machineName || m.machineId;
+    th.innerHTML = `<div class="colhdr">${m.machineName || m.machineId}</div>`;
     trNames.appendChild(th);
   });
-
   thead.appendChild(trNames);
 
-  // ---- Header Row 2: machine median scores (if available)
+  // THEAD: medians row (fixed corner)
   const trMedians = document.createElement('tr');
   const medianLabel = document.createElement('th');
   medianLabel.textContent = 'Median';
-  medianLabel.style.textAlign = 'right';
+  medianLabel.className = 'sticky-left';
+  medianLabel.style.textAlign = 'left';
   medianLabel.style.paddingRight = '8px';
-  // trMedians.appendChild(medianLabel);
+  trMedians.appendChild(medianLabel);
 
-  (data.machines || []).forEach(m => {
+  machines.forEach(m => {
     const th = document.createElement('th');
-    if (m.medianScore != null) {
-      const rounded = Math.round(Number(m.medianScore));
-      th.textContent = Number.isFinite(rounded) ? rounded.toLocaleString() : '—';
+    if (m.medianScore != null && Number.isFinite(Number(m.medianScore))) {
+      th.textContent = Math.round(Number(m.medianScore)).toLocaleString();
       th.title = `Median raw score on ${m.machineName || m.machineId}`;
     } else {
       th.textContent = '—';
     }
     trMedians.appendChild(th);
   });
-
   thead.appendChild(trMedians);
   tbl.appendChild(thead);
-  
-  // ---- Body: rows by player, columns by machine
-  (data.players || []).forEach(p => {
+
+  // TBODY
+  const tbody = document.createElement('tbody');
+  players.forEach((p, iRow) => {
     const tr = document.createElement('tr');
 
     const th = document.createElement('th');
     th.textContent = p.playerName || p.playerId;
-    th.style.textAlign = 'left';
+    th.className = 'sticky-left';
     tr.appendChild(th);
 
-    (data.machines || []).forEach(m => {
-      const cell =
-        (M.get(p.playerId)?.get(m.machineId)) ||
-        { wins: 0, games: 0, totalPoints: 0, avgPoints: null };
+    machines.forEach((m, jCol) => {
+      const cell = M.get(p.playerId)?.get(m.machineId) || { wins: 0, games: 0, totalPoints: 0, avgPoints: null };
 
-      let txt = '–';
-      let bg = '';
-      let fg = '';
-      let title = `${p.playerName || p.playerId} on ${m.machineName || m.machineId}`;
+      let text = '–', bg = '', fg = '', title = `${p.playerName || p.playerId} on ${m.machineName || m.machineId}`;
 
       if (cell.games > 0) {
-        // Text = TOTAL POINTS (sum of 5/3/2/1)
-        const pts = Math.round(Number(cell.totalPoints) * 100) / 100;
-        txt = String(pts);
+        const total = Number(cell.totalPoints) || 0;
+        const avg   = Number(cell.avgPoints);
+        const valueForText = Math.round(total * 100) / 100;
 
-        // Color = AVG POINTS (0..5)
-        // const { bg: cBg, fg: cFg } = colorForAvgPoints(cell.avgPoints);
-        // If you want color by total instead, use:
-        const { bg: cBg, fg: cFg } = colorForTotalPoints(cell.totalPoints, maxTotal);
-        bg = cBg; fg = cFg;
-
-        title += `: ${pts} total points across ${cell.games} game(s)`;
-        if (cell.avgPoints != null) {
-          title += `, avg ${Math.round(Number(cell.avgPoints) * 100) / 100} pts/game`;
+        // Choose unit value 0..1 for color based on mode
+        let unit;
+        if (mode === 'avg') {
+          unit = mapper.map(avg);
+          // keep text as TOTAL unless you want to show avg
+        } else if (mode === 'colNorm') {
+          unit = mapper.mapCol(m.machineId, total);
+        } else {
+          unit = mapper.map(total);
         }
+
+        const c = colorFromUnit(unit);
+        bg = c.bg; fg = c.fg;
+        text = showValues ? String(valueForText) : '';
+
+        title += `: ${valueForText} total points across ${cell.games} game(s)`;
+        if (Number.isFinite(avg)) title += `, avg ${Math.round(avg * 100) / 100} pts/game`;
+        if (Number.isFinite(Number(cell.wins))) title += `, wins ${cell.wins}`;
       }
 
       const td = document.createElement('td');
-      if (bg) td.style.background = bg;
-      if (fg) td.style.color = fg;
-      td.textContent = txt;
+      td.dataset.col = String(jCol);
+      td.style.background = bg || '';
+      td.style.color = fg || '';
+      td.textContent = text;
       td.title = title;
       tr.appendChild(td);
     });
 
     tbody.appendChild(tr);
   });
-
   tbl.appendChild(tbody);
+
+  // Hover highlight
+  tbl.addEventListener('mousemove', (e) => {
+    const td = e.target.closest('td');
+    if (!td) return;
+    const col = td.dataset.col;
+    tbl.querySelectorAll('td').forEach(el => el.classList.add('dim'));
+    td.parentElement.querySelectorAll('td').forEach(el => el.classList.remove('dim'));
+    tbl.querySelectorAll(`td[data-col="${col}"]`).forEach(el => el.classList.remove('dim'));
+  });
+  tbl.addEventListener('mouseleave', () => {
+    tbl.querySelectorAll('td.dim').forEach(el => el.classList.remove('dim'));
+  });
+
+  // Legend
+  renderLegend(mode, legendDomain);
 }
+
 
 /**
  * Main load handler: grabs inputs, fetches data, renders heatmap.
