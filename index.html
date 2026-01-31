@@ -4,27 +4,113 @@
   <meta charset="utf-8" />
   <title>MatchPlay Series Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Your existing stylesheet -->
   <link rel="stylesheet" href="styles.css" />
+  <!-- Minimal, scoped additions for the heatmap UX -->
+  <style>
+    /* ===== Heatmap UX helpers (scoped) ===== */
+    #heatmap {
+      border-collapse: separate;
+      border-spacing: 1px;
+      table-layout: fixed;
+      width: max-content;          /* let it scroll horizontally if wide */
+      margin-top: 8px;
+    }
+    #heatmap th, #heatmap td {
+      padding: 4px 6px;
+      font-size: 12px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    /* Sticky top header cells */
+    #heatmap thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #0b1220;         /* matches dark theme header */
+      color: #e5e7eb;
+    }
+    /* Sticky first column for both header and body */
+    #heatmap th.sticky-left { position: sticky; left: 0; z-index: 3; background: #0b1220; color: #e5e7eb; text-align: left; }
+    #heatmap td.sticky-left { position: sticky; left: 0; z-index: 2; background: #0b1220; color: #e5e7eb; text-align: left; }
+    /* Cells */
+    #heatmap td { border-radius: 3px; }
+    /* Subtle outline when hovering a row */
+    #heatmap tr:hover td { outline: 1px solid rgba(255,255,255,0.15); }
+    /* Hover highlight support (we toggle .dim via JS) */
+    #heatmap td.dim { opacity: 0.25; }
+    /* Column header rotation for long machine names */
+    .colhdr {
+      display: inline-block;
+      white-space: nowrap;
+      transform: rotate(-35deg);
+      transform-origin: left bottom;
+      height: 48px;
+    }
+    /* Legend */
+    #legend { margin-top: 6px; }
+    #legend .legend {
+      display: flex; align-items: center; gap: 8px;
+      color: #cbd5e1; font-size: 12px;
+    }
+    #legend .swatch { height: 10px; width: 18px; border-radius: 2px; }
+    /* Controls layout: keep it tidy on small screens */
+    header .controls {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    }
+    header .controls label { display: flex; align-items: center; gap: 6px; color: #e5e7eb; }
+    header .controls input, header .controls select, header .controls button {
+      background: #0b1220; color: #e5e7eb; border: 1px solid #374151; border-radius: 4px; padding: 6px 8px;
+    }
+    header .controls button { cursor: pointer; }
+  </style>
 </head>
 <body>
   <header>
     <h1>MatchPlay Series Dashboard</h1>
+
     <div class="controls">
       <label>API Base
         <input id="apiBase" value="https://matchplay-6lfz.onrender.com" />
       </label>
+
       <label>Series ID
         <input id="seriesId" value="4960" />
       </label>
+
+      <!-- ✅ New: Color scale selector (works with the improved app.js) -->
+      <label for="scale">Color scale:</label>
+      <select id="scale" aria-label="Color scale">
+        <option value="total-winz" selected>Total (winsorized)</option>
+        <option value="total-quant">Total (quantile)</option>
+        <option value="total-log">Total (log)</option>
+        <option value="avg">Average (0–5)</option>
+        <option value="colNorm">Per‑machine normalized</option>
+      </select>
+
+      <!-- ✅ New: Toggle for showing numbers inside cells -->
+      <label>
+        <input type="checkbox" id="showValues" checked />
+        Show numbers
+      </label>
+
       <button id="load">Load</button>
     </div>
+
+    <!-- ✅ New: Legend area (app.js will populate this) -->
+    <div id="legend"></div>
   </header>
+
   <main>
     <section>
       <h2>Total Points by Machine</h2>
-      <table id="heatmap"></table>
+      <div style="overflow:auto; border: 1px solid #1f2937; border-radius: 6px; padding: 6px;">
+        <!-- The table is wide; wrapper div allows scroll while headers can stay sticky -->
+        <table id="heatmap"></table>
+      </div>
     </section>
   </main>
+
   <script src="app.js"></script>
 </body>
 </html>
